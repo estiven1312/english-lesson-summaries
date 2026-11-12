@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+config/state/
+content/.processing/
+content/Inbox/*
+!content/Inbox/.gitkeep
+dist/
+content/.obsidian/
+content/Duplicates/
+.site-build-*/

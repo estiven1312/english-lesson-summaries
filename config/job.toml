@@ -1,0 +1,21 @@
+# Paths are relative to the project root, not the terminal's current directory.
+provider = "codex"                 # codex or claude
+model = ""                         # empty = selected CLI's configured default
+inbox = "content/Inbox"
+content = "content"
+state = "config/state"
+poll_seconds = 5
+stable_seconds = 10               # unchanged size/mtime across observations
+retry_seconds = 60
+max_attempts = 2
+agent_timeout_seconds = 900
+max_pages = 80
+max_images = 60
+max_text_chars = 400000
+image_width = 1400
+image_tile_height = 1600
+image_overlap = 120
+text_threshold = 100
+# Optional full executable paths; useful when a CLI is not on PATH.
+codex_command = "codex"
+claude_command = "claude"

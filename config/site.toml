@@ -1,0 +1,9 @@
+title = "DarwinGlish"
+tagline = "English, one clear idea at a time."
+notes = "content/Obsidian English"
+pdfs = "content/PDFs"
+output = "dist"
+compress_pdfs = true
+# Compress distribution copies only; preserve PDF page geometry.
+jpeg_quality = 90
+image_dpi = 220

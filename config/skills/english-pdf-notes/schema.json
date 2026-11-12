@@ -1,0 +1,123 @@
+{
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "maxLength": 80
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "Grammar",
+        "Speaking",
+        "IELTS",
+        "Vocabulary"
+      ]
+    },
+    "source_pages": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "minItems": 1
+    },
+    "grammar_markdown": {
+      "type": "string",
+      "minLength": 1
+    },
+    "related_notes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "exercises": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "choice",
+              "completion",
+              "rewrite",
+              "matching",
+              "speaking"
+            ]
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "pdf",
+              "adapted",
+              "added"
+            ]
+          },
+          "source_pages": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "answer": {
+            "type": "string",
+            "minLength": 1
+          },
+          "explanation": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "origin",
+          "source_pages",
+          "prompt",
+          "options",
+          "answer",
+          "explanation"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "title",
+    "slug",
+    "category",
+    "source_pages",
+    "grammar_markdown",
+    "related_notes",
+    "limitations",
+    "exercises"
+  ],
+  "additionalProperties": false
+}
