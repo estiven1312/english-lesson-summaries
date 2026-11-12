@@ -222,7 +222,7 @@ def page(title,main,cfg,prefix=''):
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="English grammar notes, examples, practice, and downloadable lesson PDFs.">
 <title>{escape(title)} · {brand}</title><link rel="stylesheet" href="{prefix}assets/site.css"><script src="{prefix}assets/site.js" defer></script></head>
-<body><a class="skip" href="#main">Skip to content</a><header class="header"><a class="brand" href="{prefix}index.html"><span class="brand-mark">D</span>{brand.upper()}</a>
+<body><a class="skip" href="#main">Skip to content</a><header class="header"><a class="brand" href="{prefix}index.html"><span class="brand-mark" aria-hidden="true">{brand[0]}</span><span>{brand}</span></a>
 <nav class="nav" aria-label="Main"><a href="{prefix}index.html#library">Library</a><a href="{prefix}index.html?category=practice#library">Practice</a><a href="{prefix}downloads.html">PDFs ↓</a></nav></header>
 {main}<footer class="footer"><span>{brand} / {escape(cfg['tagline'])}</span><span>Read. Connect. Put it into practice.</span></footer></body></html>'''
 
