@@ -1,16 +1,19 @@
 """Static-site behavior tests; no network, AI calls, or Git changes."""
 from __future__ import annotations
-from contextlib import redirect_stdout
-from html.parser import HTMLParser
+
 import io
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from html.parser import HTMLParser
+from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import unquote,urlsplit
+
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from build_site import build,collect,Links,render_note
+
+from build_site import build
 from compress_pdfs import compress_pdf
 
 

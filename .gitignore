@@ -9,3 +9,4 @@ dist/
 content/.obsidian/
 content/Duplicates/
 .site-build-*/
+config/systemd/generated/

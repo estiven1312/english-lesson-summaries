@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch DarwinGlish Inbox for new local files
+
+[Path]
+PathChanged=@INBOX@
+Unit=darwinglish-inbox.service
+
+[Install]
+WantedBy=default.target

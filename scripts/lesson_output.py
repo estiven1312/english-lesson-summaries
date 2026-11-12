@@ -1,5 +1,6 @@
 """Validate agent data and render deterministic Obsidian documents."""
 from __future__ import annotations
+
 import hashlib
 import json
 import re

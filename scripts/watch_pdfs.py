@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 """Cross-platform, foreground PDF inbox job. Start via config/start.sh or start.ps1."""
 from __future__ import annotations
+
 import argparse
-from contextlib import contextmanager
 import json
 import logging
 import os
-from pathlib import Path
 import shutil
 import sys
 import time
 import tomllib
+from contextlib import contextmanager
+from pathlib import Path
+
+if os.name == 'nt':
+    import msvcrt
+else:
+    import fcntl
 
 from lesson_output import render, sha256, validate
 from pdf_input import backend, prepare
@@ -67,10 +73,8 @@ def job_lock(path):
         stream.seek(0)
         try:
             if os.name == 'nt':
-                import msvcrt
                 msvcrt.locking(stream.fileno(),msvcrt.LK_NBLCK,1)
             else:
-                import fcntl
                 fcntl.flock(stream,fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as exc:
             raise RuntimeError('Another PDF job is already running for this state directory.') from exc
@@ -350,6 +354,9 @@ def main(argv=None):
         LOG.info('Watching %s with %s; press Ctrl+C to stop',cfg['inbox'],cfg['provider'])
         list(job.ready())
         if args.once:
+            if not job.observed:
+                LOG.info('No Inbox PDFs to process; exiting without a stability wait.')
+                return 0
             time.sleep(cfg['stable_seconds'])
             ready = list(job.ready())
             success = True

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Create smaller PDF distribution copies without modifying study originals."""
 from __future__ import annotations
+
 import argparse
 import json
 import re

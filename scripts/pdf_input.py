@@ -1,15 +1,23 @@
 """PDF preparation. PyMuPDF preferred; system Poppler is an optional fallback."""
 from __future__ import annotations
-import importlib.util
+
+import json
 import math
 import re
 import shutil
 import subprocess
 from pathlib import Path
 
+try:
+    import pymupdf
+except ModuleNotFoundError as error:
+    if error.name != 'pymupdf':
+        raise
+    pymupdf = None
+
 
 def backend():
-    if importlib.util.find_spec('pymupdf'):
+    if pymupdf is not None:
         return 'pymupdf'
     if all(shutil.which(x) for x in ('pdfinfo', 'pdftotext', 'pdftoppm')):
         return 'poppler'
@@ -26,7 +34,6 @@ def prepare(pdf: Path, work: Path, cfg: dict):
     engine = backend()
     document = None
     if engine == 'pymupdf':
-        import pymupdf
         document = pymupdf.open(pdf)
         if document.needs_pass:
             document.close()
@@ -81,6 +88,7 @@ def prepare(pdf: Path, work: Path, cfg: dict):
     finally:
         if document is not None:
             document.close()
-    import json
-    (work / 'pages.json').write_text(json.dumps(pages, ensure_ascii=False, indent=2), encoding='utf-8')
+    manifest_path = work / 'pages.json'
+    manifest_json = json.dumps(pages, ensure_ascii=False, indent=2)
+    manifest_path.write_text(manifest_json, encoding='utf-8')
     return {'page_count': count, 'pages': pages, 'images': images, 'backend': engine}

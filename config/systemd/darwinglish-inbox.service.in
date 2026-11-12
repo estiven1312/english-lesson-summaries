@@ -1,0 +1,18 @@
+[Unit]
+Description=Process a DarwinGlish Inbox batch and exit
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=oneshot
+WorkingDirectory=@PROJECT@
+Environment=@PATH_ENV@
+Environment=@CONFIG_ENV@
+ExecStart=@BASH@ @LAUNCHER@ --once
+Restart=no
+Nice=10
+CPUWeight=20
+IOWeight=20
+MemoryAccounting=yes
+TimeoutStartSec=infinity
+KillMode=control-group

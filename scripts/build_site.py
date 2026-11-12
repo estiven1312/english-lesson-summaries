@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 """Build a static GitHub Pages site from explicitly allowed vault notes and PDFs."""
 from __future__ import annotations
+
 import argparse
-from collections import Counter, defaultdict
 import hashlib
 import html
 import json
-from pathlib import Path, PurePosixPath
 import re
 import shutil
 import tempfile
 import tomllib
 import unicodedata
+from collections import Counter, defaultdict
+from pathlib import Path, PurePosixPath
 from urllib.parse import quote, unquote, urlsplit
 
 from markdown_it import MarkdownIt
+
 from compress_pdfs import compress_pdf
 from site_validation import validate_site
 

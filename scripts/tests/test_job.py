@@ -1,16 +1,17 @@
 """Behavior tests: fake provider responses, real filesystem, optional real PDF tools."""
 from __future__ import annotations
+
 import copy
 import json
-import os
-from pathlib import Path
 import sys
 import tempfile
-import time
 import unittest
-from unittest.mock import patch, Mock
 import zlib
+from pathlib import Path
+from unittest.mock import Mock, patch
+
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+
 import watch_pdfs as watcher
 from lesson_output import render,sha256,validate
 from pdf_input import backend,prepare

@@ -14,7 +14,7 @@ A manually started job watches an Inbox folder, reads English-learning PDFs usin
 | **markdown-it-py** | Website rendering only | `python -m pip install -r requirements-site.txt` |
 | **Ghostscript + Poppler** | Optional smaller website PDF downloads | Installed by the Pages workflow; local builds fall back to originals if absent |
 
-The remaining modules are in Python's standard library: `argparse`, `contextlib`, `hashlib`, `importlib`, `json`, `logging`, `os`, `pathlib`, `re`, `shutil`, `signal`, `subprocess`, `sys`, `time`, `tomllib`, plus `fcntl` on Unix or `msvcrt` on Windows for the job lock. Tests additionally use `unittest`, `tempfile`, `copy`, and `zlib`.
+The remaining modules are in Python's standard library: `argparse`, `contextlib`, `hashlib`, `json`, `logging`, `os`, `pathlib`, `re`, `shutil`, `signal`, `subprocess`, `sys`, `time`, `tomllib`, plus `fcntl` on Unix or `msvcrt` on Windows for the job lock. Tests additionally use `unittest`, `tempfile`, `copy`, and `zlib`.
 
 **Optional fallback:** when PyMuPDF is unavailable, the job uses Poppler's `pdfinfo`, `pdftotext`, and `pdftoppm` if all three are on PATH. Install PyMuPDF for a simpler Windows/macOS setup. There is no requirement for OCR/Tesseract, `watchdog`, `python-dotenv`, or an OpenAI/Anthropic Python SDK.
 
@@ -125,7 +125,7 @@ If your Windows execution policy blocks the launcher, review/trust the local scr
 .\.venv\Scripts\python.exe .\scripts\watch_pdfs.py --provider claude
 ```
 
-The job runs **in the foreground**. Leave that terminal open. **Press Ctrl+C to stop.** Closing the terminal also ends the watcher, though Ctrl+C allows orderly cleanup. This version does not install a startup service or scheduled task.
+The job runs **in the foreground**. Leave that terminal open. **Press Ctrl+C to stop.** Closing the terminal also ends the watcher, though Ctrl+C allows orderly cleanup. The foreground launchers do not install a startup service. For event-triggered Linux activation, use section 12.
 
 Once it is running:
 
@@ -377,6 +377,230 @@ That is approximately **61.8% smaller** overall. The IELTS candidate did not sat
 
 Install `requirements-site.txt` before running the full suite; `requirements.txt` alone is sufficient only for the watcher portion. Run watcher-only tests with `python3 -m unittest discover -s scripts/tests -p test_job.py` if you do not need the site builder.
 
-The complete suite currently has **31 tests**. Website coverage includes note/heading links, relative project-site URLs, downloadable PDFs, collapsible answers, wiki aliases in tables, excluded local data, failed-build preservation, output directory protection, raw HTML escaping, ambiguous imports, and compression fallback/preservation behavior.
+The complete suite includes **31 watcher/site tests** plus the service tests described in section 12. Website coverage includes note/heading links, relative project-site URLs, downloadable PDFs, collapsible answers, wiki aliases in tables, excluded local data, failed-build preservation, output directory protection, raw HTML escaping, ambiguous imports, and compression fallback/preservation behavior.
 
 The generated site was built locally with all 23 notes and 6 PDFs. All 31 PDF pages were rendered; detailed compressed grammar sections were visually inspected. Browser preview could not run in this environment because opening a local HTTP socket was denied. The GitHub Actions deployment itself has not run here; it will run after your commit/push and Pages setup.
+
+## 11. Detailed execution workflow
+
+There are two independent processes. The **local job creates study content**; the **GitHub workflow publishes content you have committed and pushed**.
+
+```mermaid
+flowchart TD
+    A[You add a PDF to local Inbox] --> B[Wait for a stable file]
+    B --> C[Hash and duplicate check]
+    C --> D[Copy source into the job workspace]
+    D --> E[Extract text and render screenshot tiles]
+    E --> F[Codex or Claude returns structured lesson data]
+    F --> G[Validate and render Markdown]
+    G --> H[Publish notes and archive the original PDF]
+    H --> I[You review, commit, and push]
+    I --> J[GitHub Actions runs tests and builds the site]
+    J --> K[Compress download copies and validate site links]
+    K --> L[Deploy the website to GitHub Pages]
+```
+
+### A. Starting and observing the local job
+
+1. `config/start.sh` or `config/start.ps1` locates the project, loads the OS-specific overrides, selects Python, and calls `scripts/watch_pdfs.py`.
+2. `main()` parses command-line arguments and `load_config()` reads `config/job.toml`. Provider selection follows command line → environment → TOML.
+3. `job_lock()` acquires the single-job lock. A second process using that state directory exits instead of processing the same Inbox concurrently.
+4. The job checks the PDF backend and selected CLI executable, loads `history.json`, recovers completed publications interrupted before state recording, and rebuilds the import index.
+5. `Job.ready()` polls the direct children of Inbox. It accepts regular, non-symlink `.pdf` files regardless of extension capitalization.
+6. A file becomes eligible after its size and modification timestamp remain unchanged across observations for `stable_seconds`. Changing files restart that waiting period. A final `.pdf` rename after downloading to a `.part` file is the most reliable handoff.
+
+`--once` performs the stability wait and processes one snapshot, then exits. Normal mode keeps polling until you stop it. `--check` only checks configuration/tools. `--prepare-only` only prepares one PDF and never invokes an agent or archives that source.
+
+### B. Identifying and preparing one PDF
+
+| Step | Code | Result |
+| --- | --- | --- |
+| Identify source | `lesson_output.sha256()` | Full content hash, independent of the filename |
+| Check history | `Job.process()` | Determines whether to process, wait for retry, or retain a duplicate |
+| Retain a duplicate | `Job.duplicate()` | Moves a new copy of an already processed PDF to `content/Duplicates` without another AI call |
+| Record attempt | `Job.save()` | Persists running status and the attempt count |
+| Make a working snapshot | `copy_exclusive()` | Creates and hash-checks `config/state/jobs/<hash>/work/input.pdf` |
+| Read the document | `pdf_input.prepare()` | Returns page text, page numbers, rendered-image paths, and backend name |
+
+If a saved publication plan already exists, the job resumes that plan rather than preparing the PDF and paying for another analysis.
+
+During preparation:
+
+- PyMuPDF is preferred when installed. Otherwise, the optional Poppler fallback uses `pdfinfo`, `pdftotext`, and `pdftoppm`.
+- Each page gets a record with its 1-based PDF page number and extracted text.
+- A page with fewer than `text_threshold` non-whitespace text characters is rendered as images. Tall pages are split into overlapping tiles so small screenshot text can be inspected.
+- Text-rich pages are represented by extracted text. The current version does not separately interpret illustrations on such pages.
+- Page, text, and image limits are checked. Exceeding a limit fails the job rather than silently omitting content.
+- The PDF handle is closed when preparation finishes or fails.
+
+### C. What `pages.json` contains
+
+`pages.json` is a local preparation manifest. It records the text and image-tile mapping for inspection and troubleshooting. For example:
+
+```json
+[
+  {
+    "page": 1,
+    "text": "",
+    "images": [
+      "page-001-y-000000.png",
+      "page-001-y-001480.png"
+    ]
+  },
+  {
+    "page": 2,
+    "text": "Grammar explanations extracted from this page.",
+    "images": []
+  }
+]
+```
+
+The example represents an image-only first page and a text-rich second page. The `y` value identifies the tile's vertical offset in rendered pixels. Images are listed in reading order; overlaps are not separate source pages.
+
+The JSON-writing step in `pdf_input.py` is now separated into readable statements:
+
+```python
+manifest_path = work / 'pages.json'
+manifest_json = json.dumps(pages, ensure_ascii=False, indent=2)
+manifest_path.write_text(manifest_json, encoding='utf-8')
+```
+
+`json` is imported at the **top of the module**. `ensure_ascii=False` keeps accented and other Unicode characters readable, `indent=2` formats the manifest, and UTF-8 defines its file encoding.
+
+The watcher builds the agent prompt from the preparation result **already in memory**; it does not reopen `pages.json`. The manifest is a diagnostic record, not an extra processing stage. It lives inside the job workspace, is removed with that workspace after success, and is never included in the website.
+
+### D. Agent analysis and Markdown creation
+
+1. `catalog()` gathers the existing Markdown note paths for related-topic links. It does not send the full contents of all previous notes.
+2. `make_prompt()` combines the reusable skill, page count, page text, image manifest, and allowed related-note catalog. A local `prompt.txt` records this input.
+3. `providers.run_agent()` invokes the selected CLI:
+   - **Codex:** attaches the PNG tiles, requests the JSON schema, and runs with a read-only sandbox. The CLI writes its final structured response to `raw-response.json`.
+   - **Claude:** receives the text in its prompt and uses the allowed Read tool to inspect the listed local images. The adapter extracts the response's `structured_output` object.
+4. The provider timeout bounds the call. A failure, missing structured output, or invalid JSON fails the attempt. The job keeps stdout/stderr logs for diagnosis.
+5. `lesson_output.validate()` checks fields, allowed categories, filename slug, source-page ranges, related-note targets, exercise choices, and required grammar sections. This validates structure and references; it does not prove every grammar explanation or answer is correct.
+6. `lesson_output.render()` produces `Lesson.md` and `Exercises.md`. Python constructs links and metadata, places all questions before the final answer key, and preserves the source/adapted/added exercise distinction.
+7. The job saves `result.json` and `plan.json` before publication. The plan records the output paths and complete Markdown text, allowing interrupted publication to resume without another agent call.
+
+### E. Local publication and recovery
+
+`publish()` rechecks the Inbox source hash, creates a staged bundle under `content/.processing/<hash>`, and then publishes it under `content/Obsidian English/Imported/<topic>--<hash-prefix>/`.
+
+The bundle's `manifest.json` records its source hash and generated-file hashes. The job verifies that bundle before copying the PDF to `content/PDFs/<category>/<topic>--<hash-prefix>.pdf`. The original filename remains in metadata and processing history. Existing conflicting destination files are not overwritten.
+
+Only after the archived PDF is verified and the Inbox file is rechecked does the job remove that Inbox copy. It marks the job complete, rebuilds `Imported Lessons.md`, and removes temporary working images/text/PDF copies. Prompts, results, plans, and logs remain in the ignored state directory.
+
+If an attempt fails before archiving, the original normally remains in Inbox. Retries respect the configured delay and attempt limit. Startup recovery can recognize a fully published bundle and archived PDF when an interruption happened before completion was recorded. Partial archive copies and manually edited incomplete bundles need inspection; a retry stops rather than replacing conflicting content.
+
+This finishes the **local** workflow. It does not run Git.
+
+### F. Your commit and the GitHub publication workflow
+
+After reviewing the local output, **you** stage, commit, and push it. `.github/workflows/pages.yml` responds to matching changes pushed to `main`, or to your manual workflow dispatch.
+
+| GitHub stage | What it does | What it reads/writes |
+| --- | --- | --- |
+| Checkout | Retrieves your committed project revision | Repository → runner workspace |
+| Python setup | Selects Python 3.12 and restores package cache | Runner environment |
+| Dependency setup | Installs `requirements-site.txt`, Ghostscript, and Poppler | Runner environment |
+| Behavior tests | Runs watcher and website tests with simulated agent responses | Temporary test workspaces; no paid AI calls |
+| Pages configuration | Reads the Pages configuration | GitHub Pages metadata |
+| Site build | `build_site.py` reads allowed notes/PDFs, renders HTML, and generates relative links | Committed content → temporary build directory |
+| PDF optimization | `compress_pdfs.py` creates distribution copies and checks them | Original PDFs → website download copies; originals unchanged |
+| Site validation | `site_validation.py` checks local assets, heading targets, and PDF download attributes | Generated website |
+| Artifact upload | Packages the successful `dist/` build | Runner build → Pages artifact |
+| Deployment | `actions/deploy-pages` publishes that artifact | Pages artifact → website URL |
+
+The build job has repository-content read access and Pages read access. The deploy job receives Pages write access and an identity token; it depends on the successful build. Concurrency settings cancel an older run when a newer publication starts.
+
+All PDF links point to the website's own download copies with a `download` attribute. A failed build does not replace the last successful deployment. The workflow has no step that creates commits, pushes changes, or analyzes a local Inbox.
+
+### G. Python import convention
+
+Imports belong at module scope, grouped as standard library, third-party packages, and project modules. No imports remain inside functions or methods.
+
+Optional and platform-specific dependencies are selected **at module scope**:
+
+- `pdf_input.py` optionally imports PyMuPDF at the top. If the package is absent, it can use Poppler. A different missing dependency inside an installed PyMuPDF package is surfaced rather than hidden.
+- `watch_pdfs.py` imports `msvcrt` on Windows or `fcntl` on Unix at the top. `job_lock()` only uses the selected module; it does not import it while acquiring the lock.
+
+This makes dependencies visible when opening a module and keeps processing functions focused on their actual work.
+
+## 12. Linux: run only when Inbox changes
+
+For low idle memory use, use the **systemd user path unit**, rather than leaving the Python polling watcher running. systemd monitors filesystem events through inotify and starts a one-shot service for an Inbox change. Bash replaces itself with the Python process, the job processes one stable snapshot, and the process exits. There is no dedicated Bash/Python/agent daemon left running while idle.
+
+```text
+Idle: systemd monitors Inbox; no Python or agent job is running
+New file/change: systemd starts start.sh --once
+Active: the job prepares and processes stable PDFs sequentially
+Finished: Python and the agent exit; systemd continues monitoring
+```
+
+This mode is Linux-specific. The existing Bash and PowerShell foreground launchers remain available on other systems.
+
+### Enable it
+
+Stop any foreground watcher first with Ctrl+C. From the project root, run:
+
+```bash
+# Optional: render the units inside the project for inspection only.
+bash config/service.sh generate
+
+# Install the units for your user and enable event monitoring.
+bash config/service.sh install
+
+# Confirm that the path watcher is active.
+systemctl --user status darwinglish-inbox.path
+```
+
+`generate` writes only `config/systemd/generated/`. `install` copies the generated units into `${XDG_CONFIG_HOME:-~/.config}/systemd/user/`, reloads your user manager, and enables `darwinglish-inbox.path`. Run it as your normal user, **without sudo**. It captures the current PATH so the service can locate your CLI and any Node/Python installation; it does not copy API keys. Provider/model settings come from the existing TOML and Linux configuration files.
+
+The service starts automatically with your systemd user session, normally when you log in. Monitoring is not guaranteed after logout unless user lingering is separately configured; no lingering or system-wide startup changes are made by this installer. The machine must be running and awake to process files.
+
+A PDF already present when monitoring is enabled does not itself trigger `PathChanged`. Process existing files explicitly if needed:
+
+```bash
+systemctl --user start darwinglish-inbox.service
+```
+
+After activation, adding a PDF, completing its copy, or renaming a `.part` download to `.pdf` can trigger the one-shot job. The directory trigger also sees non-PDF changes; the Python job filters them out and exits immediately if no PDFs are present. Removing a successfully processed file can cause one extra empty activation, which also exits immediately.
+
+### Inspect or stop it
+
+```bash
+# Processing status; inactive (dead) between batches is normal.
+systemctl --user status darwinglish-inbox.service
+
+# Follow job output.
+journalctl --user -u darwinglish-inbox.service -f
+
+# Disable future activations; an already active batch can still finish.
+systemctl --user disable --now darwinglish-inbox.path
+
+# Stop an active batch too, if desired.
+systemctl --user stop darwinglish-inbox.service
+```
+
+After moving the project or changing the Inbox, CLI/Python install path, or chosen TOML path, stop the path watcher and rerun `bash config/service.sh install` from the new project/environment. The installer regenerates absolute unit paths. It does not overwrite an unrelated service with the same name.
+
+### RAM, CPU, and failure behavior
+
+- **Idle:** monitoring is handled by the existing systemd user manager and kernel filesystem events. There is no resident Python, Bash, Codex, or Claude worker for this job.
+- **Active:** PDF rendering and the selected CLI still use RAM. Exact usage depends on PDF size, image dimensions, and the CLI; this mode does not make active processing memory-free. PDFs are processed sequentially.
+- **CPU/I/O:** the service uses `Nice=10`, `CPUWeight=20`, and `IOWeight=20` to give other work priority where the relevant controllers are available. These are scheduling preferences, not hard utilization caps.
+- **Accounting:** `MemoryAccounting=yes` enables inspection of service memory. During an active job, inspect it with:
+
+  ```bash
+  systemctl --user show darwinglish-inbox.service -p MemoryCurrent -p MemoryPeak
+  ```
+
+- **Retries:** the event service does not remain running just to wait for a retry deadline, and it does not install a recurring retry timer. A failed PDF stays in Inbox and can be considered on a later directory event, subject to the existing attempt count/delay. To reset attempts and retry deliberately, stop any active batch and use `bash config/start.sh --once --retry-failed`.
+- **No restart loop:** the path unit uses `PathChanged`, not `DirectoryNotEmpty` or a PDF-exists condition. A failed file remaining in Inbox does not continually reactivate the service. The service has no automatic restart policy and includes a start-rate limit as an additional boundary.
+- **Stability:** the one-shot job considers one stable snapshot. A file that is still changing waits for a later change/close event or your manual service start. For reliable large downloads, use `.part` until completion and then rename to `.pdf`.
+- **Scope:** this unit is intended for a local filesystem. Changes made remotely on some network filesystems may not produce local inotify events.
+
+If you want a hard memory cap, first observe real processing usage, then add a user-service override with `systemctl --user edit darwinglish-inbox.service`. `MemoryHigh` controls memory pressure and `MemoryMax` is a hard ceiling that may terminate an oversized job. No arbitrary memory cap is enabled by default.
+
+Primary references: [systemd path activation](https://github.com/systemd/systemd/blob/main/man/systemd.path.xml) and [systemd resource control](https://github.com/systemd/systemd/blob/main/man/systemd.resource-control.xml).
+
+The unit templates are in `config/systemd/`; `scripts/configure_service.py` renders/installs them, and `config/service.sh` is the Bash entry point. The configuration was rendered and verified locally with `systemd-analyze verify`, including paths containing spaces and percent signs. The full suite now contains **34 tests**. No user service was installed or enabled in this workspace environment; run the installation command above on your computer to activate it.

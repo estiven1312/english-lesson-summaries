@@ -1,8 +1,8 @@
 """Noninteractive CLI adapters. No agent runs during tests or --prepare-only."""
 from __future__ import annotations
+
 import json
 import os
-from pathlib import Path
 import signal
 import subprocess
 
